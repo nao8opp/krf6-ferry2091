@@ -31,17 +31,17 @@ jobs:
           wget -O google-chrome-stable_current_amd64.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_143.0.7499.169-1_amd64.deb
           sudo apt install -y --allow-downgrades ./google-chrome-stable_current_amd64.deb
           sudo apt install -y language-pack-zh-hans fonts-wqy-zenhei fonts-wqy-microhei
-          echo "Checking Chrome installation..." 
+          echo "Checking Chrome installation..."
           which google-chrome
           google-chrome --version
 
-      - name: Checkout repository 
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x' 
+          python-version: '3.x'
 
       - name: Install requirements.txt
         run: |
@@ -52,9 +52,10 @@ jobs:
         with:
           secrets: ${{ toJSON(secrets) }}
 
-      - name: Start noVNC 
+      - name: Start noVNC
         run: |
           sudo bash runnovnc.sh
+
       - name: Wait for noVNC
         run: |
           for i in {1..60}; do
@@ -65,7 +66,8 @@ jobs:
             echo "等待中 ($i)..."
             sleep 1
           done
-      - name: Run Time Adder Script 
+
+      - name: Run Time Adder Script
         run: |
           mkdir -p "$GITHUB_WORKSPACE/.tmp"
           export TMPDIR="$GITHUB_WORKSPACE/.tmp"
@@ -81,22 +83,54 @@ jobs:
           name: screenshots
           path: screenshots
 
+      - name: Telegram notify
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          STATUS="${{ job.status }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="✅"
+          else
+            EMOJI="❌"
+          fi
+
+          export MSG="${EMOJI} Weirdhost 自动加时：${STATUS}
+          Repo: ${{ github.repository }}
+          Workflow: ${{ github.workflow }}
+          Run: ${RUN_URL}"
+
+          # URL encode 后发送，避免换行/特殊字符导致失败
+          ENCODED_MSG=$(python - <<'PY'
+import os, urllib.parse
+print(urllib.parse.quote(os.environ["MSG"]))
+PY
+          )
+
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            -d "text=${ENCODED_MSG}" \
+            -d "disable_web_page_preview=true"
+
       # - name: Commit time.txt to repo
       #   env:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       #   run: |
       #     git config user.name "github-actions[bot]"
       #     git config user.email "github-actions[bot]@users.noreply.github.com"
-
+      #
       #     # 如果 time.txt 不存在，说明是第一次运行
       #     if [ ! -f time.txt ]; then
       #       echo "首次生成时间：$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
       #     else
       #       echo "$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
       #     fi
-
+      #
       #     git add time.txt
-
+      #
       #     # 如果有更改再提交
       #     if git diff --cached --quiet; then
       #       echo "无变化，无需提交"
