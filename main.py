@@ -6,6 +6,8 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage import Chromium
 import random
 import argparse
+import requests
+from datetime import datetime
 
 chrome_candidates = [
         "/opt/google/chrome/chrome",
@@ -29,13 +31,76 @@ cwd = os.getcwd()
 if binpath:
     print(f"✅ 找到浏览器路径: {binpath}")
 else:
-    print("⚠️ 警告: 未找到浏览器可执行文件，将使用系统默认路径")
+    print("⚠️ 警告: 未找到浏览器可执行文件,将使用系统默认路径")
     binpath = None
 
 parser = argparse.ArgumentParser(description="weridhost续期")
 parser.add_argument('-k', '--keep', action='store_true', help='启用保留模式')
 parser.add_argument('-d', '--debug', action='store_true', help='启用调试模式')
 iargs = parser.parse_args()
+
+# ========== Telegram 通知功能 ==========
+def send_telegram_message(message, parse_mode='HTML'):
+    """发送 Telegram 消息"""
+    bot_token = os.environ.get('TG_BOT_TOKEN')
+    chat_id = os.environ.get('TG_CHAT_ID')
+    
+    if not bot_token or not chat_id:
+        print("⚠️ 未配置 Telegram 通知（缺少 TG_BOT_TOKEN 或 TG_CHAT_ID）")
+        return False
+    
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            'chat_id': chat_id,
+            'text': message,
+            'parse_mode': parse_mode
+        }
+        response = requests.post(url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            print("✅ Telegram 通知发送成功")
+            return True
+        else:
+            print(f"⚠️ Telegram 通知发送失败: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"⚠️ 发送 Telegram 消息时出错: {e}")
+        return False
+
+def send_telegram_photo(photo_path, caption=''):
+    """发送 Telegram 图片"""
+    bot_token = os.environ.get('TG_BOT_TOKEN')
+    chat_id = os.environ.get('TG_CHAT_ID')
+    
+    if not bot_token or not chat_id:
+        return False
+    
+    if not os.path.exists(photo_path):
+        print(f"⚠️ 截图文件不存在: {photo_path}")
+        return False
+    
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+        with open(photo_path, 'rb') as photo:
+            files = {'photo': photo}
+            data = {
+                'chat_id': chat_id,
+                'caption': caption
+            }
+            response = requests.post(url, files=files, data=data, timeout=30)
+        
+        if response.status_code == 200:
+            print(f"✅ 截图发送成功: {photo_path}")
+            return True
+        else:
+            print(f"⚠️ 截图发送失败: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"⚠️ 发送截图时出错: {e}")
+        return False
+
+# ========================================
 
 def safe_ele(obj, selector, timeout=5):
     try:
@@ -156,7 +221,7 @@ def check_action_success(page):
     if h2 or error_found:
         print("⚠️ 未到续期时间。")
     if not error_found:
-        print("⚠️ 按钮已点击，但未检测到明确的成功或错误提示。")
+        print("⚠️ 按钮已点击,但未检测到明确的成功或错误提示。")
 
 def capture_screenshot( file_name=None,save_dir='screenshots',page=None):
         os.makedirs(save_dir, exist_ok=True)
@@ -166,9 +231,9 @@ def capture_screenshot( file_name=None,save_dir='screenshots',page=None):
         full_path = os.path.join(save_dir, file_name)
         try:
             page.get_screenshot(path=save_dir, name=file_name, full_page=True)
-            print(f"📸 截图已保存：{full_path}")
+            print(f"📸 截图已保存:{full_path}")
         except Exception as e:
-            print(f"⚠️ 截图失败，未能成功保存。${e}")
+            print(f"⚠️ 截图失败,未能成功保存。${e}")
 
 def check_element(desc, element, exit_on_fail=True):
     if element:
@@ -185,184 +250,147 @@ def is_port_open(host='127.0.0.1', port=9222, timeout=1):
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
 def attach_browser(port=9222):
-    # global binpath
-    # options = (
-    #     ChromiumOptions()
-    #     # .set_user_agent(user_agent)
-    #     .set_argument('--guest')
-    #     .set_argument('--no-sandbox')
-    #     .set_argument('--disable-gpu')
-    #     .set_argument('--window-size=1280,800')
-    #     .set_argument('--disable-dev-shm-usage') 
-    #     .set_argument(f'--user-data-dir={cwd}/.tmp')
-    #     .set_argument('--disable-software-rasterizer')
-    #     .set_browser_path(binpath)
-    # )
-    
-    # # 设置代理
-    # # if chrome_proxy:
-    # #      options.set_argument(f'--proxy-server={chrome_proxy}')
-    
-    # # 设置无头模式
-    # if 'DISPLAY' not in os.environ:
-    #     options.headless(True)
-    #     print("✅ DISPLAY环境变量为空，浏览器使用无头模式")
-    # else:
-    #     options.headless(False)
-    #     print("✅ DISPLAY环境变量存在，浏览器使用正常模式")
-    # browser = Chromium(options)
-    # return browser
     try:
         if is_port_open():
             browser = Chromium(port)
             if browser.states.is_alive:
-                print(f"✅ 成功接管浏览器（端口 {port}）")
+                print(f"✅ 成功接管浏览器(端口 {port})")
                 return browser
-            print("❌ 接管失败，浏览器未响应")
+            print("❌ 接管失败,浏览器未响应")
         else:
-            print(f"⚠️ 端口 {port} 未开放，跳过接管")
+            print(f"⚠️ 端口 {port} 未开放,跳过接管")
         return None
     except Exception as e:
-        print(f"⚠️ 接管浏览器时出错：{e}")
+        print(f"⚠️ 接管浏览器时出错:{e}")
         return None
 def search_btn(page):
     add_button_txt = "시간추가"
     print(f"🔍 正在查找 '{add_button_txt}' 按钮...")
     
-    # 等待按钮容器出现（确保页面完全加载）
+    # 等待按钮容器出现(确保页面完全加载)
     try:
         page.wait.ele_displayed('//div[contains(@class, "RenewBox2")]', timeout=10)
     except:
-        print("⚠️  等待 RenewBox2 容器超时，继续尝试查找...")
+        print("⚠️  等待 RenewBox2 容器超时,继续尝试查找...")
     
-    # 优先级排序：从最精准 → 最宽松
+    # 优先级排序:从最精准 → 最宽松
     selectors = [
-        # 1. 【最佳】通过 color="primary" 属性定位（唯一标识）
+        # 1. 【最佳】通过 color="primary" 属性定位(唯一标识)
         '//button[@color="primary"]',
         
         # 2. 通过 class 特征定位
         '//button[contains(@class, "Button__ButtonStyle-sc-1qu1gou-0")]',
         
-        # 3. 通过父容器定位（RenewBox2 内的第一个button）
-        '//div[contains(@class, "RenewBox2___StyledDiv")]/button[1]',
+        # 3. 通过父容器定位(RenewBox2 内的第一个button)
+        '//div[contains(@class, "RenewBox2")]//button[1]',
         
-        # 4. 通过文本包含匹配（不依赖精确文本）
-        f'//button[contains(@class, "Button__ButtonStyle") and contains(., "{add_button_txt}")]',
+        # 4. 通过按钮文本定位(包含 "시간" 或 "추가" 之一)
+        f'//button[contains(., "시간") or contains(., "추가")]',
         
-        # 5. 通过 span 的 class 定位
-        '//span[contains(@class, "Button___StyledSpan-sc-1qu1gou-2")]/ancestor::button[1]',
-        
-        # 6. 通过索引定位（第5个button，根据调试信息）
-        '(//button)[5]'
+        # 5. 最宽松:任意可见的 enabled button(仅作兜底)
+        '//button'
     ]
     
     for i, selector in enumerate(selectors, 1):
-        try:
-            btn = page.ele(selector, timeout=3)
-            if btn and btn.tag == 'button':
-                btn_text = btn.text.strip()
-                btn_class = btn.attr('class') or ''
-                btn_color = btn.attr('color') or ''
-                
-                # 验证：检查是否包含目标文本或正确的class/color
-                if (add_button_txt in btn_text or 
-                    'Button__ButtonStyle-sc-1qu1gou-0' in btn_class or 
-                    btn_color == 'primary'):
-                    print(f"✅ 找到按钮 (选择器#{i}): {selector[:60]}...")
-                    print(f"   📌 class: {btn_class[:50]}")
-                    print(f"   📌 color: {btn_color}")
-                    print(f"   📌 文本: '{btn_text}'")
-                    return btn
-        except Exception as e:
-            continue
-    
-    # 如果以上都失败，尝试遍历所有button手动查找
-    print("\n🔄 尝试遍历所有按钮手动匹配...")
-    try:
-        all_btns = page.eles('tag:button')
-        for idx, btn in enumerate(all_btns, 1):
+        print(f"  [{i}/{len(selectors)}] 尝试选择器: {selector[:50]}...")
+        btn = safe_ele(page, selector, timeout=3)
+        
+        if btn:
+            # 优先检查文本内容是否匹配
             try:
                 btn_text = btn.text.strip()
-                btn_class = btn.attr('class') or ''
-                btn_color = btn.attr('color') or ''
-                
-                # 匹配条件：包含目标文本 或 正确的class 或 color="primary"
-                if (add_button_txt in btn_text or 
-                    'Button__ButtonStyle-sc-1qu1gou-0' in btn_class or 
-                    btn_color == 'primary'):
-                    print(f"✅ 找到按钮 (遍历#{idx})")
-                    print(f"   📌 class: {btn_class[:50]}")
-                    print(f"   📌 color: {btn_color}")
-                    print(f"   📌 text: '{btn_text}'")
+                if add_button_txt in btn_text:
+                    print(f"    ✅ 找到匹配按钮(文本: '{btn_text}')")
                     return btn
-            except:
-                continue
-    except Exception as e:
-        print(f"❌ 遍历按钮失败: {e}")
+                elif btn_text:
+                    print(f"    ⚠️ 找到按钮但文本不匹配: '{btn_text}'")
+                else:
+                    print(f"    ⚠️ 找到按钮但无文本内容")
+                
+                # 如果是最后一个选择器,即使文本不匹配也返回
+                if i == len(selectors):
+                    print(f"    ℹ️ 使用兜底选择器返回该按钮")
+                    return btn
+                    
+            except Exception as e:
+                print(f"    ⚠️ 检查按钮文本时出错: {e}")
+                if i == len(selectors):
+                    return btn
+        else:
+            print(f"    ✗ 未找到匹配元素")
     
-    # 最终诊断
-    print(f"\n❌ 未找到按钮 '{add_button_txt}'")
+    print(f"❌ 所有选择器均未找到 '{add_button_txt}' 按钮")
     return None
 
 def test():
-    browser = attach_browser()
-    page = browser.latest_tab
-    btn=search_btn(page)
-    if not btn:
-        print("查找失败")
-    elif btn and btn.states.is_enabled: 
-         print("查找成功，按钮可点击")
-    else:
-        print("查找成功")
-    # capture_screenshot("test1111.png",page=page)
-    # solve_turnstile2(page)
-    # solve_turnstile(page)
-    # check_action_success(page)
+    """
+    测试环境检查函数
+    """
+    print("=" * 60)
+    print("🧪 开始环境测试")
+    print("=" * 60)
     
-def is_valid_proxy(proxy: str) -> bool:
-    """
-    校验代理格式是否合法
-    """
-    if not proxy:
-        return False
-    pattern = re.compile(
-        r'^(http|https|socks4|socks5)://'
-        r'([a-zA-Z0-9.-]+|\d{1,3}(\.\d{1,3}){3})'
-        r':(\d+)$'
-    )
-    return bool(pattern.match(proxy))
+    # 检查环境变量
+    print("\n【环境变量检查】")
+    env_vars = ['SERVER_URL', 'REMEMBER_WEB_COOKIE', 'CHROME_PROXY']
+    for var in env_vars:
+        value = os.environ.get(var)
+        if value:
+            # 敏感信息隐藏部分内容
+            display_value = value if var == 'SERVER_URL' else f"{value[:10]}..."
+            print(f"  ✅ {var}: {display_value}")
+        else:
+            print(f"  ⚠️ {var}: 未设置")
+    
+    # 检查浏览器路径
+    print(f"\n【浏览器路径】")
+    print(f"  {binpath if binpath else '未指定'}")
+    
+    # 检查显示模式
+    print(f"\n【显示模式】")
+    print(f"  {'有头模式 (DISPLAY=' + os.environ.get('DISPLAY', '') + ')' if 'DISPLAY' in os.environ else '无头模式'}")
+    
+    # 检查临时目录
+    print(f"\n【临时目录】")
+    tmp_dir = os.environ.get('TMPDIR', '/tmp')
+    print(f"  TMPDIR: {tmp_dir}")
+    print(f"  工作目录: {cwd}")
+    
+    print("\n" + "=" * 60)
+    print("🧪 环境测试完成")
+    print("=" * 60)
 
-def add_server_time() -> bool:
-    global binpath
+def add_server_time():
     """
-    使用 DrissionPage 登录 hub.weirdhost.xyz 并点击 "시간 추가" 按钮。
+    主要逻辑函数:启动浏览器并自动点击续期按钮
     """
-    # 查找可用的 Chrome/Chromium 路径
+    start_time = datetime.now()
+    print("\n" + "=" * 60)
+    print("🚀 开始执行 WeirdHost 服务器续期任务")
+    print(f"📅 开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60 + "\n")
+    
+    # 从环境变量获取配置
+    server_url = os.environ.get('SERVER_URL')
     remember_web_cookie = os.environ.get('REMEMBER_WEB_COOKIE')
-    pterodactyl_email = os.environ.get('PTERODACTYL_EMAIL')
-    pterodactyl_password = os.environ.get('PTERODACTYL_PASSWORD')
-    server_url = os.environ.get('WEIRDHOST_SERVER_URLS')
-    chrome_proxy = os.environ.get("CHROME_PROXY")
-    browser=None
-    page=None
-    if not (remember_web_cookie or (pterodactyl_email and pterodactyl_password)):
-        print("❌ 错误: 缺少登录凭据。请设置 REMEMBER_WEB_COOKIE 或 PTERODACTYL_EMAIL 和 PTERODACTYL_PASSWORD 环境变量。")
-        return False
-
-    if chrome_proxy and not is_valid_proxy(chrome_proxy):
-        print(f"❌ 错误: 代理格式不合法: {chrome_proxy}")
-        return False
-
+    chrome_proxy = os.environ.get('CHROME_PROXY')
+    
+    # 检查必需的环境变量
     if not server_url:
-        print("❌ 错误: 未设置 WEIRDHOST_SERVER_URLS 环境变量")
+        error_msg = "❌ 缺少必需的环境变量: SERVER_URL"
+        print(error_msg)
+        send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n{error_msg}")
         return False
     
-    user_agent = (
-        "Mozilla/5.0 (X11; Linux x86_64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/143.0.7499.169 Safari/537.36"
-    )
-
+    print(f"🔗 目标服务器: {server_url}")
+    # print(f"🍪 使用 Cookie 登录: {'是' if remember_web_cookie else '否'}")
+    
+    # 设置用户代理
+    user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    
+    browser = None
+    page = None
+    
     # 配置 ChromiumOptions - 参考提供的格式
     options = (
         ChromiumOptions()
@@ -384,10 +412,10 @@ def add_server_time() -> bool:
     # 设置无头模式
     if 'DISPLAY' not in os.environ:
         options.headless(True)
-        print("✅ DISPLAY环境变量为空，浏览器使用无头模式")
+        print("✅ DISPLAY环境变量为空,浏览器使用无头模式")
     else:
         options.headless(False)
-        print("✅ DISPLAY环境变量存在，浏览器使用正常模式")
+        print("✅ DISPLAY环境变量存在,浏览器使用正常模式")
     
     try:
         print("正在启动浏览器...")
@@ -396,7 +424,7 @@ def add_server_time() -> bool:
         print("✅ 浏览器连接/启动成功")
         
         if browser is None:
-            # 接管失败，启动新浏览器
+            # 接管失败,启动新浏览器
             print("启动新的浏览器实例...")
             browser = Chromium(options)
             print("✅ 浏览器启动成功")
@@ -408,14 +436,13 @@ def add_server_time() -> bool:
         
         # 打印浏览器信息
         print(f"🌐 浏览器已准备就绪")
-        # print(f"📡 代理设置: {chrome_proxy if chrome_proxy else '无'}")
         print(f"🖥️  显示模式: {'无头模式' if 'DISPLAY' not in os.environ else '正常模式'}")
         
         login_success = False
 
         # --- 使用 Cookie 登录 ---
         if remember_web_cookie:
-            print("检测到 REMEMBER_WEB_COOKIE，尝试使用 Cookie 直接登录...")
+            print("检测到 REMEMBER_WEB_COOKIE,尝试使用 Cookie 直接登录...")
             try:
                 # 清除并设置新Cookie
                 page.set.cookies.clear()
@@ -437,7 +464,7 @@ def add_server_time() -> bool:
                     print("✅ Cookie 登录成功")
                     login_success = True
                 else:
-                    print("❌ Cookie 登录失败，将尝试邮箱登录")
+                    print("❌ Cookie 登录失败,将尝试邮箱登录")
                     login_success = False
                     
             except Exception as e:
@@ -446,14 +473,17 @@ def add_server_time() -> bool:
         
         # --- 确保在正确的服务器页面 ---
         if not server_url in page.url:
-            print(f"当前不在目标服务器页面，导航至: {server_url}")
+            print(f"当前不在目标服务器页面,导航至: {server_url}")
             page.get(server_url)
             page.wait.load_start()
             time.sleep(3)
             
             if "login" in page.url.lower():
-                print("❌ 导航失败，会话可能失效。")
+                error_msg = "❌ 导航失败,会话可能失效。"
+                print(error_msg)
                 capture_screenshot("server_page_nav_fail.png",page=page)
+                send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n{error_msg}\n会话可能已失效,请检查 Cookie")
+                send_telegram_photo("screenshots/server_page_nav_fail.png", "导航失败截图")
                 return False
         
         print(f"✅ 已成功进入服务器页面: {page.url}")
@@ -464,7 +494,7 @@ def add_server_time() -> bool:
             btn=search_btn(page)
 
             if btn and btn.states.is_enabled:  # <--- 这里修改条件
-                print(f"✅ 按钮已找到且可点击（enabled & displayed）")
+                print(f"✅ 按钮已找到且可点击(enabled & displayed)")
                 # 确保按钮可见
                 try:
                     if not btn.states.is_displayed:
@@ -474,7 +504,7 @@ def add_server_time() -> bool:
                 except:
                     pass
                 
-                # --- 处理 Turnstile 验证（最多重试 3 次）---
+                # --- 处理 Turnstile 验证(最多重试 3 次)---
                 max_attempts = 3
                 res = False
 
@@ -500,7 +530,7 @@ def add_server_time() -> bool:
                         if res:
                             break
                         else:
-                            print("⚠️ Turnstile 验证未通过（返回 False）")
+                            print("⚠️ Turnstile 验证未通过(返回 False)")
                     except Exception as e:
                         print(f"❌ Turnstile 验证异常: {type(e).__name__}: {str(e)[:100]}")
                         res = False
@@ -511,18 +541,47 @@ def add_server_time() -> bool:
                         print(f"⏳ 等待 {wait_sec} 秒后重试...")
                         time.sleep(wait_sec)
                     elif attempt == max_attempts:
-                        print("❌ Turnstile 验证失败：已达到最大重试次数（3 次）")
+                        error_msg = "❌ Turnstile 验证失败:已达到最大重试次数(3 次)"
+                        print(error_msg)
+                        send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n{error_msg}")
 
                 # 检查是否成功
                 time.sleep(5)
-                check_action_success(page)
+                success = check_action_success(page)
                 
                 capture_screenshot("button_click_result.png",page=page)
+                
+                # 发送通知
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
+                if success:
+                    message = (
+                        f"✅ <b>WeirdHost 续期成功</b>\n\n"
+                        f"🕐 执行时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"⏱ 耗时: {duration:.1f} 秒\n"
+                        f"🔗 服务器: {server_url}"
+                    )
+                    send_telegram_message(message)
+                    send_telegram_photo("screenshots/button_click_result.png", "续期成功截图")
+                else:
+                    message = (
+                        f"⚠️ <b>WeirdHost 续期完成(状态未确认)</b>\n\n"
+                        f"🕐 执行时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"⏱ 耗时: {duration:.1f} 秒\n"
+                        f"ℹ️ 按钮已点击,但未检测到明确的成功提示"
+                    )
+                    send_telegram_message(message)
+                    send_telegram_photo("screenshots/button_click_result.png", "续期完成截图")
+                
                 return True
             elif btn:
-                print(f"❌ '{add_button_txt}' 按钮不可点击跳过此次操作")
+                error_msg = "❌ 续期按钮不可点击,跳过此次操作(可能未到续期时间)"
+                print(error_msg)
+                send_telegram_message(f"⚠️ <b>WeirdHost 续期跳过</b>\n\n{error_msg}")
             else:
-                print(f"❌ 未找到 '{add_button_txt}' 按钮")
+                error_msg = "❌ 未找到续期按钮"
+                print(error_msg)
                 print("当前页面标题:", page.title)
                 print("当前页面URL:", page.url)
                 
@@ -549,24 +608,33 @@ def add_server_time() -> bool:
                 except Exception as e:
                     print(f"保存调试信息时出错: {e}")
                 
+                send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n{error_msg}\n当前页面: {page.url}")
+                send_telegram_photo("screenshots/add_button_not_found.png", "未找到按钮截图")
+                
                 return False
                 
         except Exception as e:
-            print(f"❌ 点击按钮过程中出错: {e}")
+            error_msg = f"❌ 点击按钮过程中出错: {e}"
+            print(error_msg)
             import traceback
             traceback.print_exc()
             capture_screenshot("button_click_error.png",page=page)
+            send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n{error_msg}")
+            send_telegram_photo("screenshots/button_click_error.png", "错误截图")
             return False
 
     except Exception as e:
-        print(f"❌ 执行过程中发生未知错误: {e}")
+        error_msg = f"❌ 执行过程中发生未知错误: {e}"
+        print(error_msg)
         import traceback
         traceback.print_exc()
         if page:
             try:
                 capture_screenshot("general_error.png",page=page)
+                send_telegram_photo("screenshots/general_error.png", "未知错误截图")
             except:
                 pass
+        send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n{error_msg}")
         return False
     finally:
         global iargs
@@ -582,7 +650,7 @@ def add_server_time() -> bool:
 
 def main():
     global iargs
-    """主函数，处理异常退出"""
+    """主函数,处理异常退出"""
     try:
         success = add_server_time()
         if success:
@@ -595,12 +663,14 @@ def main():
                 sys.exit(1)
     except KeyboardInterrupt:
         print("\n⚠️ 用户中断执行")
+        send_telegram_message("⚠️ <b>WeirdHost 续期被中断</b>\n\n用户手动停止了任务")
         if not iargs.keep:
             sys.exit(130)
     except Exception as e:
         print(f"❌ 未捕获的异常: {e}")
         import traceback
         traceback.print_exc()
+        send_telegram_message(f"🔴 <b>WeirdHost 续期失败</b>\n\n未捕获的异常: {e}")
         if not iargs.keep:
             sys.exit(1)
 
