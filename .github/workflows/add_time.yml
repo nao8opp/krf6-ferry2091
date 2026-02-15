@@ -1,9 +1,9 @@
 name: 自动增加服务器时间
 
 on:
-  workflow_dispatch: # 允许在 Actions 页面手动触发此工作流,方便测试
+  workflow_dispatch: # 允许在 Actions 页面手动触发此工作流，方便测试
   schedule:
-    - cron: '30 0 */2 * *'
+    - cron: '18 2 */3 * *'
 
 jobs:
   add_time:
@@ -65,9 +65,7 @@ jobs:
             echo "等待中 ($i)..."
             sleep 1
           done
-
       - name: Run Time Adder Script 
-        id: run_script
         run: |
           mkdir -p "$GITHUB_WORKSPACE/.tmp"
           export TMPDIR="$GITHUB_WORKSPACE/.tmp"
@@ -83,44 +81,6 @@ jobs:
           name: screenshots
           path: screenshots
 
-      # Telegram 通知 - 工作流失败时
-      - name: Send Telegram Notification on Failure
-        if: failure()
-        run: |
-          if [ -n "${{ secrets.TG_BOT_TOKEN }}" ] && [ -n "${{ secrets.TG_CHAT_ID }}" ]; then
-            MESSAGE="🔴 <b>GitHub Actions 工作流失败</b>%0A%0A"
-            MESSAGE="${MESSAGE}📦 仓库: ${{ github.repository }}%0A"
-            MESSAGE="${MESSAGE}🔧 工作流: ${{ github.workflow }}%0A"
-            MESSAGE="${MESSAGE}🔗 运行: ${{ github.run_number }}%0A"
-            MESSAGE="${MESSAGE}👤 触发者: ${{ github.actor }}%0A"
-            MESSAGE="${MESSAGE}🔗 查看详情: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-              -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-              -d parse_mode=HTML \
-              -d text="$MESSAGE"
-          else
-            echo "⚠️ 未配置 Telegram 通知(缺少 TG_BOT_TOKEN 或 TG_CHAT_ID)"
-          fi
-
-      # Telegram 通知 - 工作流成功时(可选,如果不需要可以注释掉)
-      - name: Send Telegram Notification on Success
-        if: success()
-        run: |
-          if [ -n "${{ secrets.TG_BOT_TOKEN }}" ] && [ -n "${{ secrets.TG_CHAT_ID }}" ]; then
-            MESSAGE="✅ <b>GitHub Actions 工作流成功</b>%0A%0A"
-            MESSAGE="${MESSAGE}📦 仓库: ${{ github.repository }}%0A"
-            MESSAGE="${MESSAGE}🔧 工作流: ${{ github.workflow }}%0A"
-            MESSAGE="${MESSAGE}🔗 运行: ${{ github.run_number }}"
-            
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-              -d chat_id="${{ secrets.TG_CHAT_ID }}" \
-              -d parse_mode=HTML \
-              -d text="$MESSAGE"
-          else
-            echo "⚠️ 未配置 Telegram 通知(缺少 TG_BOT_TOKEN 或 TG_CHAT_ID)"
-          fi
-
       # - name: Commit time.txt to repo
       #   env:
       #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -128,9 +88,9 @@ jobs:
       #     git config user.name "github-actions[bot]"
       #     git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      #     # 如果 time.txt 不存在,说明是第一次运行
+      #     # 如果 time.txt 不存在，说明是第一次运行
       #     if [ ! -f time.txt ]; then
-      #       echo "首次生成时间:$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
+      #       echo "首次生成时间：$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
       #     else
       #       echo "$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
       #     fi
@@ -139,8 +99,8 @@ jobs:
 
       #     # 如果有更改再提交
       #     if git diff --cached --quiet; then
-      #       echo "无变化,无需提交"
+      #       echo "无变化，无需提交"
       #     else
-      #       git commit -m "🕐 更新时间文件: $(date +'%Y-%m-%d %H:%M:%S')"
+      #       git commit -m "?? 更新时间文件: $(date +'%Y-%m-%d %H:%M:%S')"
       #       git push origin HEAD:main
       #     fi
