@@ -264,7 +264,7 @@ def attach_browser(port=9222):
         print(f"⚠️ 接管浏览器时出错:{e}")
         return None
 def search_btn(page):
-    add_button_txt = "시간추가"
+    add_button_txt = "시간 추가"
     print(f"🔍 正在查找 '{add_button_txt}' 按钮...")
     
     # 等待按钮容器出现(确保页面完全加载)
