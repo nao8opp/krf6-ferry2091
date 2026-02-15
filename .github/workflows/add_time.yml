@@ -3,7 +3,7 @@ name: 自动增加服务器时间
 on:
   workflow_dispatch: # 允许在 Actions 页面手动触发此工作流，方便测试
   schedule:
-    - cron: '18 2 */3 * *'
+    - cron: '30 0 */2 * *'
 
 jobs:
   add_time:
