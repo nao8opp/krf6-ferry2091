@@ -1,0 +1,84 @@
+name: 自动增加服务器时间(无头)
+
+on:
+  workflow_dispatch: # 允许在 Actions 页面手动触发此工作流，方便测试
+  schedule:
+    # 使用 CRON 表达式定义定时任务，所有时间均为 UTC 时间。
+    # '0 4 * * *' 表示在 UTC 时间的每天凌晨4点执行。
+    # 如果您位于东八区（如北京时间），这对应您本地时间的每天中午12点。
+    # 如果您在其他时区，请相应调整。例如东九区（东京/首尔时间）中午12点是UTC时间3点，应为 '0 3 * * *'。
+    - cron: '48 5 * * *'
+
+jobs:
+  add_time:
+    runs-on: ubuntu-latest # 在最新的 Ubuntu 环境上运行
+
+    # 授予工作流写入仓库内容的权限
+    permissions:
+      contents: write
+
+    steps:
+      - name: Install Google Chrome
+        run: |
+          sudo apt-get update
+          wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt install -y ./google-chrome-stable_current_amd64.deb
+          sudo apt install -y language-pack-zh-hans fonts-wqy-zenhei fonts-wqy-microhei
+          echo "Checking Chrome installation..." 
+          which google-chrome
+          google-chrome --version
+
+      - name: Checkout repository 
+        uses: actions/checkout@v4
+
+      - name: Set up Python 
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' 
+
+      - name: Install requirements.txt
+        run: |
+          pip install -r requirements.txt
+
+      - name: Export all secrets to env vars
+        uses: oNaiPs/secrets-to-env-action@v1
+        with:
+          secrets: ${{ toJSON(secrets) }}
+          
+      - name: Run Time Adder Script 
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.tmp"
+          export TMPDIR="$GITHUB_WORKSPACE/.tmp"
+          echo "Using TMPDIR=$TMPDIR, DISPLAY=$DISPLAY"
+          python main.py
+
+      - name: Upload error artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots
+          
+      - name: Commit time.txt to repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 如果 time.txt 不存在，说明是第一次运行
+          if [ ! -f time.txt ]; then
+            echo "首次生成时间：$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
+          else
+            echo "$(date +'%Y-%m-%d %H:%M:%S')" > time.txt
+          fi
+
+          git add time.txt
+
+          # 如果有更改再提交
+          if git diff --cached --quiet; then
+            echo "无变化，无需提交"
+          else
+            git commit -m "?? 更新时间文件: $(date +'%Y-%m-%d %H:%M:%S')"
+            git push origin HEAD:main
+          fi
